@@ -1,69 +1,171 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import ConnectZohoButton from "@/components/ConnectZohoButton";
+import DashboardHeader from "@/components/DashboardHeader";
+import UsersTable from "@/components/UsersTable";
+
+function DashboardContent() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [users, setUsers] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Check for error in query params (e.g. from OAuth redirect)
+  useEffect(() => {
+    const errorParam = searchParams.get("error");
+    if (errorParam) {
+      setError(`Zoho OAuth Error: ${errorParam}`);
+    }
+  }, [searchParams]);
+
+  // Check auth status on mount
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const res = await fetch("/api/auth/status");
+        const data = await res.json();
+        setAuthenticated(Boolean(data.authenticated));
+        if (data.authenticated) {
+          loadUsers(1);
+        }
+      } catch {
+        setAuthenticated(false);
+      } finally {
+        setCheckingAuth(false);
+      }
+    }
+
+    checkAuth();
+  }, []);
+
+  const loadUsers = async (pageNumber = 1, isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoadingUsers(true);
+    }
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/users?page=${pageNumber}&limit=10`);
+      if (res.status === 401) {
+        setAuthenticated(false);
+        return;
+      }
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Failed to load users");
+      }
+
+      setUsers(data.users || []);
+      setPage(data.page || pageNumber);
+      setHasMore(Boolean(data.hasMore));
+    } catch (err: any) {
+      setError(err.message || "Failed to fetch users");
+    } finally {
+      setLoadingUsers(false);
+      setRefreshing(false);
+    }
+  };
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1) return;
+    loadUsers(newPage);
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      setAuthenticated(false);
+      setUsers([]);
+      setPage(1);
+      setHasMore(false);
+      router.replace("/");
+    } catch (err) {
+      console.error("Logout failed", err);
+    }
+  };
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-900 py-10 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-5xl mx-auto">
+        {!authenticated ? (
+          <div className="max-w-md mx-auto mt-16 bg-white border border-gray-200 rounded-2xl p-8 shadow-sm text-center">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 mb-6">
+              <svg className="w-8 h-8 fill-current" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-6h2v6zm4 0h-2V7h2v10z" />
+              </svg>
+            </div>
+
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-2">
+              Zoho People Integration
+            </h1>
+            <p className="text-sm text-gray-500 mb-8 leading-relaxed">
+              Connect your Zoho People account to view employees, roles, and user details in a unified table.
+            </p>
+
+            {error && (
+              <div className="mb-6 p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 text-left">
+                {error}
+              </div>
+            )}
+
+            <ConnectZohoButton />
+
+            <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-center gap-2 text-xs text-gray-400">
+              <svg className="w-4 h-4 text-emerald-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <span>Secure OAuth 2.0 with HttpOnly cookies</span>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <DashboardHeader
+              total={users.length}
+              refreshing={refreshing}
+              onRefresh={() => loadUsers(page, true)}
+              onDisconnect={handleDisconnect}
+            />
+
+            <UsersTable
+              users={users}
+              loading={loadingUsers}
+              error={error}
+              page={page}
+              hasMore={hasMore}
+              onPageChange={handlePageChange}
+              onRefresh={() => loadUsers(page, false)}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+      <DashboardContent />
+    </Suspense>
   );
 }
