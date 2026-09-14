@@ -12,6 +12,9 @@ function DashboardContent() {
   const [users, setUsers] = useState<any[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [totalUsers, setTotalUsers] = useState<number | null>(null);
+  const [totalPages, setTotalPages] = useState<number | null>(null);
+  const [location, setLocation] = useState<string | null>(null);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +37,9 @@ function DashboardContent() {
         const res = await fetch("/api/auth/status");
         const data = await res.json();
         setAuthenticated(Boolean(data.authenticated));
+        if (data.location) {
+          setLocation(data.location.toUpperCase());
+        }
         if (data.authenticated) {
           loadUsers(1);
         }
@@ -55,8 +61,10 @@ function DashboardContent() {
     }
     setError(null);
 
+    const PAGE_SIZE = 20;
+
     try {
-      const res = await fetch(`/api/users?page=${pageNumber}&limit=10`);
+      const res = await fetch(`/api/users?page=${pageNumber}&limit=${PAGE_SIZE}`);
       if (res.status === 401) {
         setAuthenticated(false);
         return;
@@ -70,6 +78,18 @@ function DashboardContent() {
       setUsers(data.users || []);
       setPage(data.page || pageNumber);
       setHasMore(Boolean(data.hasMore));
+
+      if (typeof data.total === "number") {
+        setTotalUsers(data.total);
+      } else if (!data.hasMore && pageNumber === 1) {
+        setTotalUsers(data.users?.length || 0);
+      }
+
+      if (typeof data.totalPages === "number") {
+        setTotalPages(data.totalPages);
+      } else if (!data.hasMore && pageNumber === 1) {
+        setTotalPages(1);
+      }
     } catch (err: any) {
       setError(err.message || "Failed to fetch users");
     } finally {
@@ -80,6 +100,7 @@ function DashboardContent() {
 
   const handlePageChange = (newPage: number) => {
     if (newPage < 1) return;
+    if (newPage > page && !hasMore) return;
     loadUsers(newPage);
   };
 
@@ -90,6 +111,9 @@ function DashboardContent() {
       setUsers([]);
       setPage(1);
       setHasMore(false);
+      setTotalUsers(null);
+      setTotalPages(null);
+      setLocation(null);
       router.replace("/");
     } catch (err) {
       console.error("Logout failed", err);
@@ -133,7 +157,8 @@ function DashboardContent() {
         ) : (
           <div>
             <DashboardHeader
-              total={users.length}
+              total={totalUsers !== null ? totalUsers : users.length}
+              location={location}
               refreshing={refreshing}
               onRefresh={() => loadUsers(page, true)}
               onDisconnect={handleDisconnect}
@@ -144,6 +169,9 @@ function DashboardContent() {
               loading={loadingUsers}
               error={error}
               page={page}
+              totalPages={totalPages}
+              totalCount={totalUsers}
+              limit={20}
               hasMore={hasMore}
               onPageChange={handlePageChange}
               onRefresh={() => loadUsers(page, false)}

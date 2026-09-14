@@ -1,6 +1,6 @@
 "use client";
 
-export default function DashboardHeader({ total, onRefresh, onDisconnect, refreshing }: any) {
+export default function DashboardHeader({ total, location, onRefresh, onDisconnect, refreshing }: any) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-gray-200">
       <div className="flex items-center gap-3">
@@ -20,7 +20,7 @@ export default function DashboardHeader({ total, onRefresh, onDisconnect, refres
           </div>
           <div className="flex items-center gap-1.5 mt-0.5 text-xs text-green-600 font-medium">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-            Connected to Zoho People
+            Connected to Zoho People {location ? `(${location} DC)` : ""}
           </div>
         </div>
       </div>
